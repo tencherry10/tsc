@@ -16,6 +16,7 @@
 
 #define _POSIX_SOURCE
 #include <stdio.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <termios.h>
 #include <stdlib.h>
@@ -23,6 +24,11 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <assert.h>
 
 #ifdef __cplusplus
   #define TSC_EXTERN extern "C"
@@ -194,7 +200,20 @@
       }                                                                                 \
     }                                                                                   \
   } while(0)
+
+tsc_vec_define(vi, int)
+typedef tsc_vec_type(vi) vec_int_t;
+tsc_vec_define(vsz, size_t)
+typedef tsc_vec_type(vsz) vec_sz_t;
+
 //}
+
+/// Useful macros
+
+#define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+
+#define auto_cstr __attribute__((cleanup(auto_cleanup_cstr))) char *
+#define auto_file __attribute__((cleanup(auto_cleanup_file))) FILE *
 
 /// helper that never return error
 
@@ -212,9 +231,9 @@ TSC_EXTERN const char * tsc_strtrim(char **ret, const char *s);
 TSC_EXTERN const char * tsc_strdup(char **ret, const char *s);
 TSC_EXTERN const char * tsc_strndup(char **ret, const char *s, size_t n);
 TSC_EXTERN const char * tsc_strflatten(char **ret, char ** str_array, size_t n, const char * sep, size_t sep_sz);
-TSC_EXTERN inline const char * tsc_strtrunc(char **ret, const char *s, size_t n);
-TSC_EXTERN inline const char * tsc_strupper(char **ret, char *s);
-TSC_EXTERN inline const char * tsc_strlower(char **ret, char *s);
+TSC_EXTERN const char * tsc_strtrunc(char **ret, const char *s, size_t n);
+TSC_EXTERN const char * tsc_strupper(char **ret, char *s);
+TSC_EXTERN const char * tsc_strlower(char **ret, char *s);
 
 /// files / IO
 TSC_EXTERN const char * tsc_freadline(char **ret, FILE *stream);
@@ -226,6 +245,11 @@ TSC_EXTERN const char * tsc_getpass(char **lineptr, FILE *stream);
 
 TSC_EXTERN const char * tsc_freadall(char **ret, FILE *stream);
 
+TSC_EXTERN const char * tsc_getcwd(char **ret);
+TSC_EXTERN const char * tsc_lsdir(char ***ret, size_t *ndir, const char * dir);
+TSC_EXTERN const char * tsc_dir_exists(int *ret, const char * dir);
+TSC_EXTERN const char * tsc_file_exists(int *ret, const char * dir);
+
 /// memory
 TSC_EXTERN const char * tsc_alloc2d(void ***ret, size_t y, size_t x, size_t sz);
 TSC_EXTERN const char * tsc_alloc2d_irregular(void ***ret, size_t y, size_t * x_per_y, size_t sz);
@@ -236,116 +260,11 @@ TSC_EXTERN const char * tsc_alloc3d_irregular(void ****ret, size_t z, size_t y, 
 TSC_EXTERN const char * tsc_base64_enc(char **ret, char *data, size_t sz);
 TSC_EXTERN const char * tsc_base64_dec(char **ret, size_t* retsz, char *data, size_t datsz);
 
-#define TSC_POOL_ATTPACKPRE
-#define TSC_POOL_ATTPACKSUF __attribute__((__packed__))
+// opague data structures
+typedef struct tsc_pool_t   tsc_pool_t;
+typedef struct tsc_hpool_t  tsc_hpool_t;
 
-#ifndef TSC_POOL_CRITICAL_ENTRY
-  #define TSC_POOL_CRITICAL_ENTRY()
-#endif
-#ifndef TSC_POOL_CRITICAL_EXIT
-  #define TSC_POOL_CRITICAL_EXIT()
-#endif
-
-#ifndef TSC_HPOOL_CRITICAL_ENTRY
-  #define TSC_HPOOL_CRITICAL_ENTRY()
-#endif
-#ifndef TSC_HPOOL_CRITICAL_EXIT
-  #define TSC_HPOOL_CRITICAL_EXIT()
-#endif
-
-#ifndef TSC_POOL_FIRST_FIT
-#  ifndef TSC_POOL_BEST_FIT
-#    define TSC_POOL_BEST_FIT
-#  endif
-#endif
-
-#ifndef TSC_HPOOL_FIRST_FIT
-#  ifndef TSC_HPOOL_BEST_FIT
-#    define TSC_HPOOL_BEST_FIT
-#  endif
-#endif
-
-
-
-TSC_POOL_ATTPACKPRE typedef struct tsc_pool_ptr {
-  uint16_t next;
-  uint16_t prev;
-} TSC_POOL_ATTPACKSUF tsc_pool_ptr;
-
-#if INTPTR_MAX == INT32_MAX
-
-TSC_POOL_ATTPACKPRE typedef struct tsc_hpool_block {
-  union {
-    tsc_pool_ptr  used;
-  } header;
-  struct {
-    uint16_t parent,  child;
-    uint16_t next,    prev;
-  } hier;
-  union {
-    tsc_pool_ptr  free;
-    uint8_t       data[4];
-  } body;
-} TSC_POOL_ATTPACKSUF tsc_hpool_block;
-
-TSC_POOL_ATTPACKPRE typedef struct tsc_pool_block {
-  union {
-    tsc_pool_ptr  used;
-  } header;
-  union {
-    tsc_pool_ptr  free;
-    uint8_t       data[4];
-  } body;
-} TSC_POOL_ATTPACKSUF tsc_pool_block;
-
-
-#else
-
-// on 64-bit architecture, I want to ensure that pointers are aligned on 8byte boundary
-// so sizeof(tsc_pool_block) = 24 as opposed to 16 which is easier to divided into
-// fortunately, divide by a constant 24 is optimized into a multiple and right shift.
-
-TSC_POOL_ATTPACKPRE typedef struct tsc_hpool_block {
-  union {
-    tsc_pool_ptr  used;
-  } header;
-  struct {
-    uint16_t parent,  child;
-    uint16_t next,    prev;
-  } hier;
-  uint8_t padding[4];
-  union {
-    tsc_pool_ptr  free;
-    uint8_t       data[8];
-  } body;
-} TSC_POOL_ATTPACKSUF tsc_hpool_block;
-
-TSC_POOL_ATTPACKPRE typedef struct tsc_pool_block {
-  union {
-    tsc_pool_ptr  used;
-  } header;
-  uint8_t padding[4];
-  union {
-    tsc_pool_ptr  free;
-    uint8_t       data[8];
-  } body;
-} TSC_POOL_ATTPACKSUF tsc_pool_block;
-
-#endif
-
-typedef struct tsc_pool_t {
-  tsc_pool_block  *heap;
-  uint16_t        numblocks;
-  uint16_t        allocd;
-} tsc_pool_t;
-
-typedef struct tsc_hpool_t {
-  tsc_hpool_block   *heap;
-  uint16_t          numblocks;
-  uint16_t          allocd;
-} tsc_hpool_t;
-
-TSC_EXTERN const char * tsc_hpool_init(tsc_hpool_t *heap, tsc_hpool_block *mem, uint16_t numblocks);
+TSC_EXTERN const char * tsc_hpool_init(tsc_hpool_t *heap, void *mem, size_t mem_sz);
 TSC_EXTERN void         tsc_hpool_deinit(tsc_hpool_t *heap);
 TSC_EXTERN void         tsc_hpool_free(tsc_hpool_t *heap, void *ptr);
 TSC_EXTERN void         tsc_hpool_freeall(tsc_hpool_t *heap);
@@ -355,7 +274,7 @@ TSC_EXTERN void *       tsc_hpool_realloc(tsc_hpool_t *heap, void *ptr, size_t s
 TSC_EXTERN void         tsc_hpool_attach(tsc_hpool_t *heap, void *ptr, void *parent);
 TSC_EXTERN void *       tsc_hpool_info(tsc_hpool_t *heap, void *ptr);
       
-TSC_EXTERN const char * tsc_pool_init(tsc_pool_t *heap, tsc_pool_block *mem, uint16_t numblocks);
+TSC_EXTERN const char * tsc_pool_init(tsc_pool_t *heap, void *mem, size_t mem_sz);
 TSC_EXTERN void         tsc_pool_deinit(tsc_pool_t *heap);
 TSC_EXTERN void         tsc_pool_free(tsc_pool_t *heap, void *ptr);
 TSC_EXTERN void         tsc_pool_freeall(tsc_pool_t *heap);
@@ -363,6 +282,20 @@ TSC_EXTERN void *       tsc_pool_malloc(tsc_pool_t *heap, size_t size);
 TSC_EXTERN void *       tsc_pool_calloc(tsc_pool_t *heap, size_t n, size_t size);
 TSC_EXTERN void *       tsc_pool_realloc(tsc_pool_t *heap, void *ptr, size_t size);
 TSC_EXTERN void *       tsc_pool_info(tsc_pool_t *heap, void *ptr);
+
+static inline void auto_cleanup_file(FILE **fp) {
+  if(fp && *fp) {
+    fclose(*fp);
+    *fp = NULL;
+  }
+}
+
+static inline void auto_cleanup_cstr(char **s) { 
+  if(s && *s) {
+    free(*s);
+    *s = NULL;
+  }
+}
 
 #define TSC_DEFINE
 #ifdef TSC_DEFINE
@@ -518,6 +451,10 @@ inline const char * tsc_strlower(char **ret, char *s) {
   return NULL;
 }
 
+///////////////////////////
+// IO Handling Functions //
+//////////////////////////{
+
 // this function models after python's readline function
 // it will take care of all the corner cases of fgets
 // but it assumes there are no \0 in the file/stream
@@ -645,7 +582,9 @@ const char * tsc_freadall(char **ret, FILE *stream) {
       tsc_unlikely_if(ferror(stream) != 0) {
         free(*ret); *ret = NULL; return "FGETS FAILED";
       } 
-      return "EOF";
+      for(size_t i = n + nread; i <= avail ; i++)
+        (*ret)[i] = '\0';
+      return NULL;
     }
     
     n = avail;
@@ -657,6 +596,124 @@ const char * tsc_freadall(char **ret, FILE *stream) {
     (*ret)[avail] = '\0';
   }
 }
+
+const char * tsc_getcwd(char **ret) {
+  char    *tmp;
+  size_t  avail = 32;
+  
+  tsc_unlikely_if( (*ret = (char *) malloc(avail+1)) == NULL )
+    return "OOM";
+  (*ret)[avail] = '\0';  
+  
+  while(1) {
+    if(getcwd(*ret, avail) != NULL) {
+      return NULL;
+    }
+
+    avail = avail << 1;
+    tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail+1)) == NULL ) {
+      free(*ret); *ret = NULL; return "OOM";
+    }
+    *ret = tmp;
+    (*ret)[avail] = '\0';    
+  }
+}
+  
+const char * tsc_lsdir(char ***ret, size_t *ndir, const char * curdir) {
+  const char    *estr;
+  DIR           *dir  = NULL;
+  struct dirent *ent;
+  vec_sz_t      dirlen;
+  size_t        i;
+  
+  tsc_vec_init(dirlen);
+  errno = 0;
+  *ret = NULL;
+  *ndir = 0;
+  if( (dir = opendir(curdir) ) == NULL) {
+    estr = strerror(errno);
+    free(*ret);
+    *ret = NULL;
+    goto cleanup;
+  }
+  
+  while( (ent = readdir(dir)) ) {
+    tsc_vec_push(vsz, dirlen, strlen(ent->d_name)+1);
+  }
+  
+  if( (estr = tsc_alloc2d_irregular((void ***) ret, tsc_vec_size(dirlen), tsc_vec_ptr(dirlen), 1)) != NULL)
+    goto cleanup;
+  
+  errno = 0;
+  if( closedir(dir) != 0) {
+    dir   = NULL;
+    estr  = strerror(errno);
+    goto cleanup;
+  }
+  dir = NULL;
+  
+  if( (dir = opendir(curdir) ) == NULL) {
+    free(*ret);
+    *ret = NULL;    
+    estr = strerror(errno);
+    goto cleanup;
+  }
+  
+  i = 0;
+  while( (ent = readdir(dir)) ) {
+    strncpy((*ret)[i++], ent->d_name, strlen(ent->d_name)+1);
+  }  
+
+  errno = 0;
+  if( closedir(dir) != 0) {
+    free(*ret);
+    *ret = NULL;    
+    dir   = NULL;
+    estr  = strerror(errno);
+    goto cleanup;
+  }
+  dir = NULL;
+  
+  *ndir = tsc_vec_size(dirlen);
+  
+cleanup:
+  if(dir) closedir(dir);
+  tsc_vec_destroy(dirlen);
+  return estr;
+}
+
+const char * tsc_dir_exists(int *ret, const char * path) {
+  struct stat s = {0};
+  *ret = 0;
+  errno = 0;
+  if(stat(path, &s) != 0) {
+    if(errno == ENOENT)
+      return NULL;
+    return strerror(errno);
+  }
+  
+  if(S_ISDIR(s.st_mode))
+    *ret = 1;
+  
+  return NULL;
+}
+
+const char * tsc_file_exists(int *ret, const char * path) {
+  struct stat s = {0};
+  *ret = 0;
+  errno = 0;
+  if(stat(path, &s) != 0) {
+    if(errno == ENOENT)
+      return NULL;
+    return strerror(errno);
+  }
+  
+  if(S_ISREG(s.st_mode))
+    *ret = 1;
+  
+  return NULL;
+}
+
 
 // same as tsc_freadline, but will handle \0
 // which is why sz parameter is needed. When \0 exist *sz != strlen(ret)
@@ -714,6 +771,119 @@ const char * tsc_freadline0(char **ret, int *sz, FILE *stream) {
     }
   }
 }
+
+//}////////////////////////
+// Pool Memory Allocator //
+//////////////////////////{
+
+#define TSC_POOL_ATTPACKPRE
+#define TSC_POOL_ATTPACKSUF __attribute__((__packed__))
+
+#ifndef TSC_POOL_CRITICAL_ENTRY
+  #define TSC_POOL_CRITICAL_ENTRY()
+#endif
+#ifndef TSC_POOL_CRITICAL_EXIT
+  #define TSC_POOL_CRITICAL_EXIT()
+#endif
+
+#ifndef TSC_HPOOL_CRITICAL_ENTRY
+  #define TSC_HPOOL_CRITICAL_ENTRY()
+#endif
+#ifndef TSC_HPOOL_CRITICAL_EXIT
+  #define TSC_HPOOL_CRITICAL_EXIT()
+#endif
+
+#ifndef TSC_POOL_FIRST_FIT
+#  ifndef TSC_POOL_BEST_FIT
+#    define TSC_POOL_BEST_FIT
+#  endif
+#endif
+
+#ifndef TSC_HPOOL_FIRST_FIT
+#  ifndef TSC_HPOOL_BEST_FIT
+#    define TSC_HPOOL_BEST_FIT
+#  endif
+#endif
+
+
+
+TSC_POOL_ATTPACKPRE typedef struct tsc_pool_ptr {
+  uint16_t next;
+  uint16_t prev;
+} TSC_POOL_ATTPACKSUF tsc_pool_ptr;
+
+#if INTPTR_MAX == INT32_MAX
+
+TSC_POOL_ATTPACKPRE typedef struct tsc_hpool_block {
+  union {
+    tsc_pool_ptr  used;
+  } header;
+  struct {
+    uint16_t parent,  child;
+    uint16_t next,    prev;
+  } hier;
+  union {
+    tsc_pool_ptr  free;
+    uint8_t       data[4];
+  } body;
+} TSC_POOL_ATTPACKSUF tsc_hpool_block;
+
+TSC_POOL_ATTPACKPRE typedef struct tsc_pool_block {
+  union {
+    tsc_pool_ptr  used;
+  } header;
+  union {
+    tsc_pool_ptr  free;
+    uint8_t       data[4];
+  } body;
+} TSC_POOL_ATTPACKSUF tsc_pool_block;
+
+
+#else
+
+// on 64-bit architecture, I want to ensure that pointers are aligned on 8byte boundary
+// so sizeof(tsc_pool_block) = 24 as opposed to 16 which is easier to divided into
+// fortunately, divide by a constant 24 is optimized into a multiple and right shift.
+
+TSC_POOL_ATTPACKPRE typedef struct tsc_hpool_block {
+  union {
+    tsc_pool_ptr  used;
+  } header;
+  struct {
+    uint16_t parent,  child;
+    uint16_t next,    prev;
+  } hier;
+  uint8_t padding[4];
+  union {
+    tsc_pool_ptr  free;
+    uint8_t       data[8];
+  } body;
+} TSC_POOL_ATTPACKSUF tsc_hpool_block;
+
+TSC_POOL_ATTPACKPRE typedef struct tsc_pool_block {
+  union {
+    tsc_pool_ptr  used;
+  } header;
+  uint8_t padding[4];
+  union {
+    tsc_pool_ptr  free;
+    uint8_t       data[8];
+  } body;
+} TSC_POOL_ATTPACKSUF tsc_pool_block;
+
+#endif
+
+struct tsc_pool_t {
+  tsc_pool_block  *heap;
+  uint16_t        numblocks;
+  uint16_t        allocd;
+};
+
+struct tsc_hpool_t {
+  tsc_hpool_block   *heap;
+  uint16_t          numblocks;
+  uint16_t          allocd;
+};
 
 // Pool Allocator based on Ralph Hempel's umm_malloc
 // changes made:
@@ -1140,7 +1310,8 @@ static void tsc_hpool_relink_hier(tsc_hpool_t *heap, uint16_t c, uint16_t newc) 
   }
 }
 
-const char * tsc_pool_init(tsc_pool_t *heap, tsc_pool_block *mem, uint16_t numblocks) {
+const char * tsc_pool_init(tsc_pool_t *heap, void *mem, size_t mem_sz) {
+  size_t numblocks = mem_sz / sizeof(tsc_pool_block);
   if(mem == NULL) {
     heap->heap  = (tsc_pool_block *) malloc(numblocks*sizeof(tsc_pool_block));
     if(heap->heap == NULL) {
@@ -1150,7 +1321,7 @@ const char * tsc_pool_init(tsc_pool_t *heap, tsc_pool_block *mem, uint16_t numbl
     }    
     heap->allocd= 1;
   } else {
-    heap->heap = mem;
+    heap->heap = (tsc_pool_block *) mem;
     heap->allocd= 0;
   }
   memset(heap->heap, 0, numblocks * sizeof(tsc_pool_block));
@@ -1158,7 +1329,8 @@ const char * tsc_pool_init(tsc_pool_t *heap, tsc_pool_block *mem, uint16_t numbl
   return NULL;
 }
 
-const char * tsc_hpool_init(tsc_hpool_t *heap, tsc_hpool_block *mem, uint16_t numblocks) {
+const char * tsc_hpool_init(tsc_hpool_t *heap, void *mem, size_t mem_sz) {
+  size_t numblocks = mem_sz / sizeof(tsc_pool_block);
   if(mem == NULL) {
     heap->heap  = (tsc_hpool_block *) malloc(numblocks*sizeof(tsc_hpool_block));
     if(heap->heap == NULL) {
@@ -1168,7 +1340,7 @@ const char * tsc_hpool_init(tsc_hpool_t *heap, tsc_hpool_block *mem, uint16_t nu
     }
     heap->allocd= 1;
   } else {
-    heap->heap  = mem;
+    heap->heap  = (tsc_hpool_block *) mem;
     heap->allocd= 0;
   }
   memset(heap->heap, 0, numblocks * sizeof(tsc_hpool_block));
@@ -1834,6 +2006,10 @@ void tsc_hpool_attach(tsc_hpool_t *heap, void *ptr, void *parent) {
   TSC_HPOOL_CHILD(cparent) = c;
 }
 
+//}////////////////////////
+// Matrix Memory Alloc   //
+//////////////////////////{
+
 // these functions are kind of interesting.
 // they use up a non-trivial amount of re-direction pointer memory at the beginning in order to 
 // "emulate" static multi-dimensional pointer accesses
@@ -1933,6 +2109,10 @@ const char* tsc_alloc3d_irregular(void ****ret, size_t z, size_t y, size_t ** x_
   return NULL;
 }
 
+//}/////////////////
+// Base64 Enc/Dec //
+///////////////////{
+
 const char* tsc_base64_enc(char **ret, char *data, size_t sz) {
   static char base64_enc_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
                                     'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
@@ -2024,6 +2204,7 @@ const char* tsc_base64_dec(char **ret, size_t* retsz, char *data, size_t datsz) 
   
   return NULL;
 }
+//}
 
 //{
 #endif
