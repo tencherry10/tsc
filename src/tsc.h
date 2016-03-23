@@ -17,8 +17,8 @@
   
   if [ "$build" -ne "0" ] ; then
     echo Compiling $0:
-    echo ${CC=cc} -std=gnu11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
-    ${CC=cc} -std=gnu11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
+    echo ${CC=cc} -std=c11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
+    ${CC=cc} -std=c11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
     chmod +x ${0%.*}
   fi
   
@@ -2550,6 +2550,7 @@ int tsc_test_run_all(void) {
 //{
 #endif
 
+//~ #define TSC_MAIN
 #ifdef TSC_MAIN
 
 void base64_enc_test1(void) {
@@ -2596,16 +2597,49 @@ void base64_dec_invalid_char(void) {
   TSCT_ASSERT(tsc_base64_dec(&dec, &sz, res1, strlen(res1))!=NULL);
 }
 
+void matrix_alloc_2d_test(void) {
+  int **mat2d;
+  
+  TSCT_ASSERT(tsc_alloc2d((void***) &mat2d,3,3,4) == NULL);
+
+  for(int i = 0 ; i < 3 ; i++)
+    for(int j = 0 ; j < 3 ; j++)
+      mat2d[i][j] = i*100+j;
+
+  for(int i = 0 ; i < 3 ; i++)
+    for(int j = 0 ; j < 3 ; j++)
+      mat2d[i][j] = mat2d[i][j] * mat2d[i][j];  // multiplied with itself
+
+  int sum = 0;
+  int sum_exp = 0;
+  for(int i = 0 ; i < 3 ; i++)
+    for(int j = 0 ; j < 3 ; j++)
+      sum_exp += (i*100+j) * (i*100+j);
+  for(int i = 0 ; i < 3 ; i++)
+    for(int j = 0 ; j < 3 ; j++)  
+      sum += mat2d[i][j];
+  
+  TSCT_ASSERT(sum == sum_exp);
+  
+  free(mat2d);
+}
+
 void suite_base64(void) {
   TSCT_REG(base64_enc_test1);
   TSCT_REG(base64_dec_test1);
   TSCT_REG(base64_dec_invalid_char);
 }
 
+void suite_matrix_alloc(void) {
+  TSCT_REG(matrix_alloc_2d_test);
+}
+
+
 int main(int argc, const char ** argv) {
   (void)argc;
   (void)argv;
   TSCT_ADD_SUITE(suite_base64);
+  TSCT_ADD_SUITE(suite_matrix_alloc);
   return TSCT_RUN_ALL();
 }
 
