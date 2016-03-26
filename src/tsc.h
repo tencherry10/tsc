@@ -46,7 +46,8 @@
 // 1. pool size are limited to 2^16*blocksize, maybe we should make a larger pool?
 // 2. tsc_freadlines is unnecessarily complicated. Why not just memmap and search for '\n'
 // 3. need to add stats to hpool / pool
-// 4. consider using memory map for tsc_freadall 
+// 4. consider using memory map for tsc_freadall
+// 5. get rid of hard constants in tsc_test_*
 
 #ifndef TSC__INCLUDE_TSC_H
 #define TSC__INCLUDE_TSC_H
@@ -56,6 +57,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __cplusplus
   #define TSC_EXTERN extern "C"
@@ -292,6 +294,7 @@ TSC_EXTERN const char * tsc_getcwd(char **ret);
 TSC_EXTERN const char * tsc_lsdir(char ***ret, size_t *ndir, const char * dir);
 TSC_EXTERN const char * tsc_dir_exists(int *ret, const char * dir);
 TSC_EXTERN const char * tsc_file_exists(int *ret, const char * dir);
+TSC_EXTERN const char * tsc_file_mtime(time_t *ret, const char *path);
 
 /// memory
 TSC_EXTERN const char * tsc_alloc2d(void ***ret, size_t y, size_t x, size_t sz);
@@ -356,7 +359,6 @@ static inline void auto_cleanup_cstr(char **s) {
 #include <dirent.h>
 #include <assert.h>
 #include <signal.h>
-#include <time.h>
 
 tsc_vec_define(vi, int)
 typedef tsc_vec_type(vi) vec_int_t;
@@ -777,6 +779,15 @@ const char * tsc_file_exists(int *ret, const char * path) {
   if(S_ISREG(s.st_mode))
     *ret = 1;
   
+  return NULL;
+}
+
+const char * tsc_file_mtime(time_t *ret, const char *path) {
+  struct stat statbuf;
+  *ret = 0;
+  if(stat(path, &statbuf) == -1)
+    return "tsc_file_mtime: stat failed";
+  *ret = statbuf.st_mtime;
   return NULL;
 }
 
@@ -2350,6 +2361,7 @@ static void tsc_test_color(int color) {
 }
 
 void tsc_test_assert_run(int result, const char* expr, const char* func, const char* file, int line) {
+  (void) func;
   test_info.num_asserts++;
   test_info.test_passing = test_info.test_passing && result;
   
@@ -2450,7 +2462,7 @@ int tsc_test_run_all(void) {
   clock_t start = clock();
   strcpy(current_suite, "");
   
-  for(unsigned int i = 0; i < test_info.num_tests; i++) {
+  for(int i = 0; i < test_info.num_tests; i++) {
     tsc_test_t test = tests[i];
     
     /* Check for transition to a new suite */
