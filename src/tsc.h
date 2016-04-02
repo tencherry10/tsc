@@ -51,9 +51,15 @@
 
 #ifndef TSC__INCLUDE_TSC_H
 #define TSC__INCLUDE_TSC_H
-//}
 
+//}
+////////////////////////////////////////
+// Global headers                     //
+//{/////////////////////////////////////
+
+#ifndef _POSIX_SOURCE
 #define _POSIX_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,12 +83,15 @@
   #define tsc_unlikely_if(expr) if((expr))
 #endif
 
+//}/////////////////////////////////////
+// tsc_vec define                     //
+//{/////////////////////////////////////
+
 /// tsc_vec class is done with some nasty gnarly macros. This is intentional.
 /// In C, where generic container is not possible, the only way to get a cleaner implementation
 /// is to use void * pointers and then cast to and from it. The problem with that approach is that
 /// casts prevents optimization and loop unrolling (type information is lost).
 
-//{ tsc_vec_define
 // CAUTION, if OOM happens in resize / copy / push, you are responsible for cleaning up dst
 // Not possible to do it here b/c we don't have info on the resources pointed by a[i]
 
@@ -230,14 +239,20 @@
     }                                                                                   \
   } while(0)
 
-//}
-
-/// Useful macros
+//}/////////////////////////////////////
+// Useful Macros                      //
+//{/////////////////////////////////////
 
 #define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 
-#define auto_cstr __attribute__((cleanup(auto_cleanup_cstr))) char *
-#define auto_file __attribute__((cleanup(auto_cleanup_file))) FILE *
+#define E_TSC(expr)  do         { \
+  if( (estr = (expr)) != NULL ) { \
+    return estr;                  \
+  } } while(0)
+
+//}/////////////////////////////////////
+// Simple Testing Function Decl       //
+//{/////////////////////////////////////
 
 #define TSCT_SUITE(name)                void name(void)
 
@@ -260,7 +275,9 @@ TSC_EXTERN void   tsc_test_add_test(void (*func)(void), const char* name, const 
 TSC_EXTERN void   tsc_test_add_suite(void (*func)(void));
 TSC_EXTERN int    tsc_test_run_all(void);
 
-/// helper that never return error
+//}/////////////////////////////////////
+// Error Free Helpers Decl            //
+//{/////////////////////////////////////
 
 TSC_EXTERN int    tsc_strstartswith(const char *s, const char *start);
 TSC_EXTERN int    tsc_strendswith(const char *s, const char *end);
@@ -270,7 +287,9 @@ TSC_EXTERN char * tsc_strtrim_inplace(char *s);
 TSC_EXTERN char * tsc_strupper_inplace(char *str);
 TSC_EXTERN char * tsc_strlower_inplace(char *str);
 
-/// general helper
+//}/////////////////////////////////////
+// String Helpers Decl                //
+//{/////////////////////////////////////
 
 TSC_EXTERN const char * tsc_strtrim(char **ret, const char *s);
 TSC_EXTERN const char * tsc_strdup(char **ret, const char *s);
@@ -280,7 +299,10 @@ TSC_EXTERN const char * tsc_strtrunc(char **ret, const char *s, size_t n);
 TSC_EXTERN const char * tsc_strupper(char **ret, char *s);
 TSC_EXTERN const char * tsc_strlower(char **ret, char *s);
 
-/// files / IO
+//}/////////////////////////////////////
+// Files / IO Functions Decl          //
+//{/////////////////////////////////////
+
 TSC_EXTERN const char * tsc_freadline(char **ret, FILE *stream);
 TSC_EXTERN const char * tsc_freadlines(char ***ret, int *nlines, FILE *stream);
 TSC_EXTERN const char * tsc_freadlinesfree(char **ret, int nlines);
@@ -291,20 +313,31 @@ TSC_EXTERN const char * tsc_getpass(char **lineptr, FILE *stream);
 TSC_EXTERN const char * tsc_freadall(char **ret, FILE *stream);
 
 TSC_EXTERN const char * tsc_getcwd(char **ret);
+TSC_EXTERN const char * tsc_getexecwd(char **ret);
 TSC_EXTERN const char * tsc_lsdir(char ***ret, size_t *ndir, const char * dir);
 TSC_EXTERN const char * tsc_dir_exists(int *ret, const char * dir);
 TSC_EXTERN const char * tsc_file_exists(int *ret, const char * dir);
 TSC_EXTERN const char * tsc_file_mtime(time_t *ret, const char *path);
 
-/// memory
+//}/////////////////////////////////////
+// Memory Allocator Functions Decl    //
+//{/////////////////////////////////////
+
 TSC_EXTERN const char * tsc_alloc2d(void ***ret, size_t y, size_t x, size_t sz);
 TSC_EXTERN const char * tsc_alloc2d_irregular(void ***ret, size_t y, size_t * x_per_y, size_t sz);
 TSC_EXTERN const char * tsc_alloc3d(void ****ret, size_t z, size_t y, size_t x, size_t sz);
 TSC_EXTERN const char * tsc_alloc3d_irregular(void ****ret, size_t z, size_t y, size_t ** x_per_z_y, size_t sz);
 
-/// encoding / decoding
+//}/////////////////////////////////////
+// Encoding / Checksum Decl           //
+//{/////////////////////////////////////
+
 TSC_EXTERN const char * tsc_base64_enc(char **ret, char *data, size_t sz);
 TSC_EXTERN const char * tsc_base64_dec(char **ret, size_t* retsz, char *data, size_t datsz);
+
+//}/////////////////////////////////////
+// Memory Pool Decl                   //
+//{/////////////////////////////////////
 
 // opague data structures
 typedef struct tsc_pool_t   tsc_pool_t;
@@ -329,6 +362,13 @@ TSC_EXTERN void *       tsc_pool_calloc(tsc_pool_t *heap, size_t n, size_t size)
 TSC_EXTERN void *       tsc_pool_realloc(tsc_pool_t *heap, void *ptr, size_t size);
 TSC_EXTERN void *       tsc_pool_info(tsc_pool_t *heap, void *ptr);
 
+//}/////////////////////////////////////
+// Auto Cleanup Func                  //
+//{/////////////////////////////////////
+
+#define auto_cstr __attribute__((cleanup(auto_cleanup_cstr))) char *
+#define auto_file __attribute__((cleanup(auto_cleanup_file))) FILE *
+
 static inline void auto_cleanup_file(FILE **fp) {
   if(fp && *fp) {
     fclose(*fp);
@@ -343,9 +383,15 @@ static inline void auto_cleanup_cstr(char **s) {
   }
 }
 
+//}
+//{ end define TSC__INCLUDE_TSC_H
+#endif
 //~ #define TSC_DEFINE
 #ifdef TSC_DEFINE
 //}
+////////////////////////////////////////
+// Implementation Headers             //
+//{/////////////////////////////////////
 
 #include <unistd.h>
 #include <stdint.h>
@@ -359,15 +405,16 @@ static inline void auto_cleanup_cstr(char **s) {
 #include <dirent.h>
 #include <assert.h>
 #include <signal.h>
+#include <libgen.h>
 
 tsc_vec_define(vi, int)
 typedef tsc_vec_type(vi) vec_int_t;
 tsc_vec_define(vsz, size_t)
 typedef tsc_vec_type(vsz) vec_sz_t;
 
-///////////////////////////
-// String Functions      //
-//////////////////////////{
+//}////////////////////////
+// String Functions                   //
+//{/////////////////////////////////////
 
 int tsc_strstartswith(const char *s, const char *start) {
   for(;; s++, start++)
@@ -685,6 +732,42 @@ const char * tsc_getcwd(char **ret) {
     *ret = tmp;
     (*ret)[avail] = '\0';    
   }
+}
+
+const char * tsc_getexecwd(char **ret) {
+  char    *tmp;
+  size_t  avail = 32;
+  ssize_t retsz;
+  
+  tsc_unlikely_if( (*ret = (char *) malloc(avail+1)) == NULL )
+    return "OOM";
+  (*ret)[avail] = '\0';  
+  
+  while(1) {
+    errno = 0;
+    retsz = readlink("/proc/self/exe", *ret, avail);
+    if(retsz == -1) {
+      return strerror(errno);
+    }
+    if(retsz < (ssize_t) avail)
+      break;
+
+    avail = avail << 1;
+    tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail+1)) == NULL ) {
+      free(*ret); *ret = NULL; return "OOM";
+    }
+    *ret = tmp;
+    (*ret)[avail] = '\0';    
+  }
+  
+  char * dir = dirname(*ret);
+  tsc_unlikely_if( tsc_strdup(&tmp, dir) != NULL ) {
+    free(*ret); *ret = NULL; return "OOM";
+  }
+  free(*ret); 
+  *ret = tmp; 
+  
+  return NULL;
 }
   
 const char * tsc_lsdir(char ***ret, size_t *ndir, const char * curdir) {
@@ -2556,15 +2639,14 @@ int tsc_test_run_all(void) {
   if (test_info.num_suites_fails > 0) { return 1; } else { return 0; }
 }
 
+//}
 
-//{
-#endif
-//{
+//{ end define TSC_DEFINE
 #endif
 
 //~ #define TSC_MAIN
 #ifdef TSC_MAIN
-
+//}
 void base64_enc_test1(void) {
   char *enc;
   char *test1 = "Man is distinguished, not only by his reason, " \
@@ -2655,5 +2737,6 @@ int main(int argc, const char ** argv) {
   return TSCT_RUN_ALL();
 }
 
+//{ end define TSC_MAIN
 #endif
 
