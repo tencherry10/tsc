@@ -250,6 +250,19 @@
     return estr;                  \
   } } while(0)
 
+#define E_MAIN(expr) do {               \
+    if( (estr = (expr)) != NULL ) {     \
+      printf("failed with %s\n", estr); \
+      return 1;                         \
+    }                                   \
+  } while(0)
+
+#define E_ERRNO_NEG1(expr) do { \
+  errno = 0;                    \
+  if( (expr) == -1 ) {          \
+    return strerror(errno);     \
+  } } while(0)
+
 //}/////////////////////////////////////
 // Simple Testing Function Decl       //
 //{/////////////////////////////////////
@@ -307,10 +320,9 @@ TSC_EXTERN const char * tsc_freadline(char **ret, FILE *stream);
 TSC_EXTERN const char * tsc_freadlines(char ***ret, int *nlines, FILE *stream);
 TSC_EXTERN const char * tsc_freadlinesfree(char **ret, int nlines);
 TSC_EXTERN const char * tsc_freadline0(char **ret, int *sz, FILE *stream);
+TSC_EXTERN const char * tsc_freadall(char **ret, FILE *stream);
 
 TSC_EXTERN const char * tsc_getpass(char **lineptr, FILE *stream);
-
-TSC_EXTERN const char * tsc_freadall(char **ret, FILE *stream);
 
 TSC_EXTERN const char * tsc_getcwd(char **ret);
 TSC_EXTERN const char * tsc_getexecwd(char **ret);
@@ -318,6 +330,11 @@ TSC_EXTERN const char * tsc_lsdir(char ***ret, size_t *ndir, const char * dir);
 TSC_EXTERN const char * tsc_dir_exists(int *ret, const char * dir);
 TSC_EXTERN const char * tsc_file_exists(int *ret, const char * dir);
 TSC_EXTERN const char * tsc_file_mtime(time_t *ret, const char *path);
+TSC_EXTERN const char * tsc_set_file_mtime(const char *path, time_t mtime);
+
+TSC_EXTERN const char * tsc_get_cmd_result(char **ret, const char * cmd);
+
+TSC_EXTERN const char * tsc_chmod(const char *path, mode_t mode);
 
 //}/////////////////////////////////////
 // Memory Allocator Functions Decl    //
@@ -366,12 +383,20 @@ TSC_EXTERN void *       tsc_pool_info(tsc_pool_t *heap, void *ptr);
 // Auto Cleanup Func                  //
 //{/////////////////////////////////////
 
-#define auto_cstr __attribute__((cleanup(auto_cleanup_cstr))) char *
-#define auto_file __attribute__((cleanup(auto_cleanup_file))) FILE *
+#define auto_cstr   __attribute__((cleanup(auto_cleanup_cstr)))   char *
+#define auto_file   __attribute__((cleanup(auto_cleanup_file)))   FILE *
+#define auto_pfile  __attribute__((cleanup(auto_cleanup_pfile)))  FILE *
 
 static inline void auto_cleanup_file(FILE **fp) {
   if(fp && *fp) {
     fclose(*fp);
+    *fp = NULL;
+  }
+}
+
+static inline void auto_cleanup_pfile(FILE **fp) {
+  if(fp && *fp) {
+    pclose(*fp);
     *fp = NULL;
   }
 }
@@ -382,6 +407,8 @@ static inline void auto_cleanup_cstr(char **s) {
     *s = NULL;
   }
 }
+
+
 
 //}
 //{ end define TSC__INCLUDE_TSC_H
@@ -406,6 +433,8 @@ static inline void auto_cleanup_cstr(char **s) {
 #include <assert.h>
 #include <signal.h>
 #include <libgen.h>
+#include <sys/types.h>
+#include <utime.h>
 
 tsc_vec_define(vi, int)
 typedef tsc_vec_type(vi) vec_int_t;
@@ -566,9 +595,9 @@ inline const char * tsc_strlower(char **ret, char *s) {
   return NULL;
 }
 
-//}////////////////////////
-// IO Handling Functions //
-//////////////////////////{
+//}/////////////////////////////////////
+// IO Handling Functions              //
+//{/////////////////////////////////////
 
 // this function models after python's readline function
 // it will take care of all the corner cases of fgets
@@ -874,6 +903,32 @@ const char * tsc_file_mtime(time_t *ret, const char *path) {
   return NULL;
 }
 
+const char * tsc_set_file_mtime(const char *path, time_t mtime) {
+  struct utimbuf times;
+  times.actime  = mtime;
+  times.modtime = mtime;
+  E_ERRNO_NEG1(utime(path, &times));
+  return NULL;
+}
+
+const char * tsc_chmod(const char *path, mode_t mode) {
+  E_ERRNO_NEG1(chmod(path, mode));
+  return NULL;
+}
+
+const char * tsc_get_cmd_result(char **ret, const char * cmd) {
+  const char  *estr;
+  auto_pfile  fp = NULL;
+  *ret = NULL;
+  
+  if( (fp = popen(cmd, "r")) == NULL )
+    return "popen failed";
+  
+  E_TSC(tsc_freadall(ret, fp));
+  
+  return NULL;
+}
+
 
 // same as tsc_freadline, but will handle \0
 // which is why sz parameter is needed. When \0 exist *sz != strlen(ret)
@@ -932,9 +987,9 @@ const char * tsc_freadline0(char **ret, int *sz, FILE *stream) {
   }
 }
 
-//}////////////////////////
-// Pool Memory Allocator //
-//////////////////////////{
+//}/////////////////////////////////////
+// Pool Memory Allocator              //
+//{/////////////////////////////////////
 
 #define TSC_POOL_ATTPACKPRE
 #define TSC_POOL_ATTPACKSUF __attribute__((__packed__))
@@ -2166,9 +2221,9 @@ void tsc_hpool_attach(tsc_hpool_t *heap, void *ptr, void *parent) {
   TSC_HPOOL_CHILD(cparent) = c;
 }
 
-//}////////////////////////
-// Matrix Memory Alloc   //
-//////////////////////////{
+//}/////////////////////////////////////
+// Matrix Memory Alloc                //
+//{/////////////////////////////////////
 
 // these functions are kind of interesting.
 // they use up a non-trivial amount of re-direction pointer memory at the beginning in order to 
