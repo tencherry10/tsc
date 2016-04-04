@@ -30,8 +30,8 @@ static inline void auto_cleanup_curl_slist(struct curl_slist **p) {
 TSC_EXTERN const char * 
 tsc_ftp_getinfo(long *file_time, double *file_sz, const char *url, int en_ssl, const char * cert);
 
-//~ TSC_EXTERN const char * 
-//~ tsc_ftp
+TSC_EXTERN const char * 
+tsc_ftp_get(const char *url, const char *fname, int en_ssl, const char * cert);
 
 #endif
 
@@ -120,5 +120,36 @@ tsc_ftp_getinfo(long *file_time, double *file_sz, const char *url, int en_ssl, c
   return NULL;
 }
 
+static size_t ftp_write_cb(void *buffer, size_t size, size_t nmemb, void *userp) {
+  FILE *fp = (FILE *) userp;
+  return fwrite(buffer, size, nmemb, fp);
+}
+
+const char * tsc_ftp_get(const char *url, const char *fname, int en_ssl, const char * cert) {
+  CURLcode  ecurl = 0;
+  auto_curl req   = NULL;
+  auto_file fp    = NULL;
+  
+  if( (req = curl_easy_init()) == NULL ) 
+    return "curl init failed"; 
+  
+  if( (fp = fopen(fname, "wb")) == NULL)
+    return "fopen failed";
+  
+  E_CURL(curl_easy_setopt(req, CURLOPT_URL, url));
+  E_CURL(curl_easy_setopt(req, CURLOPT_WRITEFUNCTION, ftp_write_cb));
+  E_CURL(curl_easy_setopt(req, CURLOPT_WRITEDATA, fp));
+  if(en_ssl) {
+    E_CURL(curl_easy_setopt(req, CURLOPT_USE_SSL, CURLUSESSL_ALL));
+    if(cert) {
+      E_CURL(curl_easy_setopt(req, CURLOPT_SSLCERTTYPE, "PEM"));
+      E_CURL(curl_easy_setopt(req, CURLOPT_SSL_CTX_FUNCTION, sslctx_certpem));
+      E_CURL(curl_easy_setopt(req, CURLOPT_SSL_CTX_DATA, (void *) cert));
+    }
+  }
+  E_CURL(curl_easy_perform(req));
+  
+  return NULL;
+}
 
 #endif

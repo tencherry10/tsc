@@ -2324,9 +2324,9 @@ const char* tsc_alloc3d_irregular(void ****ret, size_t z, size_t y, size_t ** x_
   return NULL;
 }
 
-//}////////////////////////
-// Base64 Enc/Dec        //
-//////////////////////////{
+//}/////////////////////////////////////
+// Base64 Enc/Dec                     //
+//{/////////////////////////////////////
 
 const char* tsc_base64_enc(char **ret, char *data, size_t sz) {
   static char base64_enc_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
@@ -2420,9 +2420,9 @@ const char* tsc_base64_dec(char **ret, size_t* retsz, char *data, size_t datsz) 
   return NULL;
 }
 
-//}////////////////////////
-// Test System Function  //
-//////////////////////////{
+//}/////////////////////////////////////
+// Test System Function               //
+//{/////////////////////////////////////
 
 #define TSCT_MAX_NAME  512
 #define TSCT_MAX_ERROR 2048
