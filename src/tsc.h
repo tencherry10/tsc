@@ -288,6 +288,14 @@ TSC_EXTERN void   tsc_test_add_test(void (*func)(void), const char* name, const 
 TSC_EXTERN void   tsc_test_add_suite(void (*func)(void));
 TSC_EXTERN int    tsc_test_run_all(void);
 
+/// Useful general helper function
+
+//}/////////////////////////////////////
+// Useful General Helper Func Decl    //
+//{/////////////////////////////////////
+
+TSC_EXTERN void * reallocf(void *ptr, size_t size);
+
 //}/////////////////////////////////////
 // Error Free Helpers Decl            //
 //{/////////////////////////////////////
@@ -440,6 +448,18 @@ tsc_vec_define(vi, int)
 typedef tsc_vec_type(vi) vec_int_t;
 tsc_vec_define(vsz, size_t)
 typedef tsc_vec_type(vsz) vec_sz_t;
+
+//}////////////////////////
+// General Helpers       //
+//{////////////////////////
+
+void * reallocf(void *ptr, size_t size) {
+  void *nptr = realloc(ptr, size);
+  // OOM condition
+  if (!nptr && ptr && size != 0)
+		free(ptr);
+  return nptr;
+}
 
 //}////////////////////////
 // String Functions                   //
@@ -630,9 +650,8 @@ const char * tsc_freadline(char **ret, FILE *stream) {
     
     if( feof(stream) != 0 ) {
       if(nlast == (avail - 2)) {  // bad luck, eof at boundary of buffer (need to grow it by 1)
-        tsc_unlikely_if( (tmp = (char *) realloc(*ret, ++avail)) == NULL ) {
-          free(*ret); *ret = NULL; return "OOM";
-        }
+        tsc_unlikely_if( (*ret = (char *) reallocf(*ret, ++avail)) == NULL )
+          return "OOM";
       }
       return "EOF";
     }
@@ -640,9 +659,8 @@ const char * tsc_freadline(char **ret, FILE *stream) {
     if(nlast == (avail - 2)) {  // not eof and no new line, buffer size must be not big enough
       n     = avail - 1;        // avail - 1 b/c we want to reuse the old \0 spot
       avail = avail << 1;
-      tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail)) == NULL ) {
-        free(*ret); *ret = NULL; return "OOM";
-      }
+      tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail)) == NULL )
+        return "OOM";
       *ret = tmp;
     }
   }
@@ -733,9 +751,8 @@ const char * tsc_freadall(char **ret, FILE *stream) {
     
     n = avail;
     avail = avail << 1;
-    tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail+1)) == NULL ) {
-      free(*ret); *ret = NULL; return "OOM";
-    }
+    tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
+      return "OOM";
     *ret = tmp;
     (*ret)[avail] = '\0';
   }
@@ -755,9 +772,8 @@ const char * tsc_getcwd(char **ret) {
     }
 
     avail = avail << 1;
-    tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail+1)) == NULL ) {
-      free(*ret); *ret = NULL; return "OOM";
-    }
+    tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
+      return "OOM";
     *ret = tmp;
     (*ret)[avail] = '\0';    
   }
@@ -782,9 +798,8 @@ const char * tsc_getexecwd(char **ret) {
       break;
 
     avail = avail << 1;
-    tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail+1)) == NULL ) {
-      free(*ret); *ret = NULL; return "OOM";
-    }
+    tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
+      return "OOM";
     *ret = tmp;
     (*ret)[avail] = '\0';    
   }
@@ -965,9 +980,9 @@ const char * tsc_freadline0(char **ret, int *sz, FILE *stream) {
     
     if( feof(stream) != 0 ) {
       if(nlast == (avail - 2)) {  // bad luck, eof at boundary of buffer (need to grow it by 1)
-        tsc_unlikely_if( (tmp = (char *) realloc(*ret, ++avail)) == NULL ) {
+        tsc_unlikely_if( (*ret = (char *) reallocf(*ret, ++avail)) == NULL ) {
           if(sz) *sz = 0; 
-          free(*ret); *ret = NULL; return "OOM";
+          return "OOM";
         }
       }
       if(sz) *sz = nlast+1;
@@ -977,9 +992,9 @@ const char * tsc_freadline0(char **ret, int *sz, FILE *stream) {
     if(nlast == (avail - 2)) {  // not eof and no new line, buffer size must be not big enough
       n     = avail - 1;        // avail - 1 b/c we want to reuse the old \0 spot
       avail = avail << 1;
-      tsc_unlikely_if( (tmp = (char *) realloc(*ret, avail)) == NULL ) {
+      tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail)) == NULL ) {
         if(sz) *sz = 0;
-        free(*ret); *ret = NULL; return "OOM";
+        return "OOM";
       }
       *ret = tmp;
       memset(*ret + n, 0, avail - n);
