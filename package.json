@@ -5,5 +5,5 @@
   "description": "C helper include",
   "keywords": ["c"],
   "license": "MIT",
-  "src": [ "src/tsc.h" ]
+  "src": [ "src/tsc.h", "src/tsc_curl.h" ]
 }
