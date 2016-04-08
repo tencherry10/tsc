@@ -661,7 +661,6 @@ const char * tsc_freadline(char **ret, FILE *stream) {
       avail = avail << 1;
       tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail)) == NULL )
         return "OOM";
-      *ret = tmp;
     }
   }
 }
@@ -753,7 +752,6 @@ const char * tsc_freadall(char **ret, FILE *stream) {
     avail = avail << 1;
     tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
       return "OOM";
-    *ret = tmp;
     (*ret)[avail] = '\0';
   }
 }
@@ -774,7 +772,6 @@ const char * tsc_getcwd(char **ret) {
     avail = avail << 1;
     tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
       return "OOM";
-    *ret = tmp;
     (*ret)[avail] = '\0';    
   }
 }
@@ -800,7 +797,6 @@ const char * tsc_getexecwd(char **ret) {
     avail = avail << 1;
     tsc_unlikely_if( (*ret = (char *) reallocf(*ret, avail+1)) == NULL )
       return "OOM";
-    *ret = tmp;
     (*ret)[avail] = '\0';    
   }
   
@@ -996,7 +992,6 @@ const char * tsc_freadline0(char **ret, int *sz, FILE *stream) {
         if(sz) *sz = 0;
         return "OOM";
       }
-      *ret = tmp;
       memset(*ret + n, 0, avail - n);
     }
   }
