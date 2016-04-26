@@ -17,8 +17,8 @@
   
   if [ "$build" -ne "0" ] ; then
     echo Compiling $0:
-    echo ${CC=cc} -std=c11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
-    ${CC=cc} -std=c11 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
+    echo ${CC=cc} -std=c11 -O2 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
+    ${CC=cc} -std=c11 -O2 -DTSC_DEFINE -DTSC_MAIN -x c ${0} -o ${0%.*}
     chmod +x ${0%.*}
   fi
   
@@ -37,7 +37,7 @@
 #endif
 
 // tsc.h 
-// Public Domain -- no warranty is offered or implied (see http://www.wtfpl.net/)
+// Public Domain -- no warranty is offered or implied (see https://wiki.creativecommons.org/wiki/CC0)
 
 // However, portions of this code is motivated directly / indirectly from other code base with permissive license
 // They are listed in LICENSE.txt and for compliance it is best to include that in your LICENSE.txt if you choose to use tsc.h
@@ -57,13 +57,16 @@
 // Global headers                     //
 //{/////////////////////////////////////
 
-#ifndef _POSIX_SOURCE
-#define _POSIX_SOURCE
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
 #endif
+
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #ifdef __cplusplus
   #define TSC_EXTERN extern "C"
@@ -238,6 +241,99 @@
       }                                                                                 \
     }                                                                                   \
   } while(0)
+
+#define tsc_make_vec(name, type)                                                        \
+  typedef struct { size_t n, m; type *a; } name##_t;                                    \
+  static inline void name##_init(name##_t *v) { v->n = 0; v->m = 0; v->a = 0; }         \
+  static inline void name##_destroy(name##_t *v) { free(v->a); }                        \
+  static inline void name##_clear(name##_t *v) { v->n = 0; }                            \
+  static inline type name##_elem(name##_t *v, size_t i) { return v->a[i]; }             \
+  static inline type name##_at(name##_t *v, size_t i) { return v->a[i]; }               \
+  static inline type name##_pop(name##_t *v) { return v->a[--(v->n)]; }                 \
+  static inline type name##_first(name##_t *v) { return v->a[0]; }                      \
+  static inline type name##_last(name##_t *v) { return v->a[v->n-1]; }                  \
+  static inline size_t name##_size(name##_t *v) { return v->n; }                        \
+  static inline size_t name##_max(name##_t *v) { return v->m; }                         \
+  static inline type* name##_ptr(name##_t *v) { return v->a; }                          \
+  static inline const char* name##_resize(name##_t *v, size_t s) {                      \
+    type *tmp;                                                                          \
+    tsc_unlikely_if((tmp = (type*)realloc(v->a, sizeof(type) * s)) == NULL )            \
+      return "OOM";                                                                     \
+    v->m = s; v->a = tmp; return NULL; }                                                \
+  static inline const char* name##_copy(name##_t *dst, name##_t *src) {                 \
+    const char *estr;                                                                   \
+    tsc_unlikely_if(dst == src) return NULL;                                            \
+    if (dst->m < src->n)                                                                \
+      tsc_unlikely_if( (estr = name##_resize(dst, src->n)) != NULL )                    \
+        return estr;                                                                    \
+    dst->n = src->n;                                                                    \
+    memcpy(dst->a, src->a, sizeof(type) * src->n); return NULL; }                       \
+  static inline const char* name##_push(name##_t *v, type x) {                          \
+    const char *estr;                                                                   \
+    if(v->n == v->m) {                                                                  \
+      size_t m = v->m ? v->m << 1 : 4;                                                  \
+      tsc_unlikely_if( (estr = name##_resize(v, m)) != NULL )                           \
+        return estr;                                                                    \
+    }                                                                                   \
+    v->a[v->n++]= x; return NULL; }                                                     \
+  static inline const char* name##_compact(name##_t *v) {                               \
+    return name##_resize(v, v->n); }                                                    \
+  static inline const char* name##_extend(name##_t *dst, name##_t *src) {               \
+    const char *estr;                                                                   \
+    size_t n = dst->n + src->n;                                                         \
+    if(dst->m < n)                                                                      \
+      tsc_unlikely_if( (estr = name##_resize(dst, n)) != NULL )                         \
+        return estr;                                                                    \
+    memcpy(dst->a + dst->n, src->a, sizeof(type) * src->n);                             \
+    dst->n = n; return NULL; }                                                          \
+  static inline const char* name##_reverse(name##_t *v) {                               \
+    type tmp;                                                                           \
+    for( size_t i = (v->n-1) >> 1 ; (i + 1) > 0 ; --i) {                                \
+      tmp = v->a[i]; v->a[i] = v->a[v->n - i - 1]; v->a[v->n - i - 1] = tmp;            \
+    }                                                                                   \
+    return NULL; }                                                                      \
+  static inline const char* name##_splice(name##_t *v, size_t start, size_t count) {    \
+    tsc_unlikely_if(count == 0) return NULL;                                            \
+    tsc_unlikely_if(start > v->n) { v->n = 0; return NULL; }                            \
+    tsc_unlikely_if(start + count > v->n) { v->n = start; return NULL; }                \
+    memmove(v->a + start, v->a + start + count, sizeof(v->a[0])*(v->n - start - count));\
+    v->n -= count; return NULL; }                                                       \
+  static inline const char* name##_subvec(name##_t *dst,                                \
+    name##_t *src, size_t start, size_t count) {                                        \
+    const char *estr; size_t n;                                                         \
+    tsc_unlikely_if(dst == src) { name##_splice(dst, start, count); return NULL; }      \
+    if(start > src->n) { dst->n = 0; return NULL; }                                     \
+    if(start + count > src->n)  n = src->n - start;                                     \
+    else                        n = count;                                              \
+    tsc_unlikely_if( (estr = name##_resize(dst, n)) != NULL )                           \
+      return estr;                                                                      \
+    memcpy(dst->a, src->a + start, sizeof(type) * n);                                   \
+    dst->n = n; return NULL; }                                                          \
+  static inline const char* name##_insert(name##_t *v, size_t idx, type x) {            \
+    tsc_unlikely_if(idx > v->n) return "INDEX OUT OF BOUND";                            \
+    if(idx == v->n) return name##_push(v, x);                                           \
+    if(v->n == v->m) {                                                                  \
+      const char *estr;                                                                 \
+      size_t m = v->m ? v->m << 1 : 4;                                                  \
+      tsc_unlikely_if( (estr = name##_resize(v, m)) != NULL )                           \
+        return estr;                                                                    \
+    }                                                                                   \
+    for(size_t i = v->n ; i > idx ; --i ) {                                             \
+      v->a[i] = v->a[i-1];                                                              \
+    }                                                                                   \
+    v->n++; v->a[idx] = x; return NULL; }                                               \
+  static inline const char* name##_pushfront(name##_t *v, type x) {                     \
+    return name##_insert(v, 0, x); }                                                    \
+  static inline int name##_all(name##_t *v) {                                           \
+    int ret = 1;                                                                        \
+    for(size_t i = 0 ; i < v->n ; ++i)                                                  \
+      ret = ret && !!(v->a[i]);                                                         \
+    return ret; }                                                                       \
+  static inline int name##_any(name##_t *v) {                                           \
+    int ret = 0;                                                                        \
+    for(size_t i = 0 ; i < v->n ; ++i)                                                  \
+      ret = ret || !!(v->a[i]);                                                         \
+    return ret; }
 
 //}/////////////////////////////////////
 // Useful Macros                      //
@@ -428,7 +524,6 @@ static inline void auto_cleanup_cstr(char **s) {
 // Implementation Headers             //
 //{/////////////////////////////////////
 
-#include <unistd.h>
 #include <stdint.h>
 #include <termios.h>
 #include <ctype.h>
@@ -449,9 +544,9 @@ typedef tsc_vec_type(vi) vec_int_t;
 tsc_vec_define(vsz, size_t)
 typedef tsc_vec_type(vsz) vec_sz_t;
 
-//}////////////////////////
-// General Helpers       //
-//{////////////////////////
+//}/////////////////////////////////////
+// General Helpers                    //
+//{/////////////////////////////////////
 
 void * reallocf(void *ptr, size_t size) {
   void *nptr = realloc(ptr, size);
@@ -461,7 +556,7 @@ void * reallocf(void *ptr, size_t size) {
   return nptr;
 }
 
-//}////////////////////////
+//}/////////////////////////////////////
 // String Functions                   //
 //{/////////////////////////////////////
 
@@ -2756,6 +2851,13 @@ void base64_dec_invalid_char(void) {
   TSCT_ASSERT(tsc_base64_dec(&dec, &sz, res1, strlen(res1))!=NULL);
 }
 
+
+void suite_base64(void) {
+  TSCT_REG(base64_enc_test1);
+  TSCT_REG(base64_dec_test1);
+  TSCT_REG(base64_dec_invalid_char);
+}
+
 void matrix_alloc_2d_test(void) {
   int **mat2d;
   
@@ -2783,22 +2885,95 @@ void matrix_alloc_2d_test(void) {
   free(mat2d);
 }
 
-void suite_base64(void) {
-  TSCT_REG(base64_enc_test1);
-  TSCT_REG(base64_dec_test1);
-  TSCT_REG(base64_dec_invalid_char);
-}
-
 void suite_matrix_alloc(void) {
   TSCT_REG(matrix_alloc_2d_test);
 }
 
+tsc_make_vec(int_vec, int)
+
+void vec_basic(void) {
+  int_vec_t a;
+  int_vec_init(&a);
+  int_vec_push(&a, 0);
+  int_vec_push(&a, 1);
+  int_vec_push(&a, 2);
+  int_vec_push(&a, 3);
+  int_vec_push(&a, 4);
+  
+  TSCT_ASSERT(0 == int_vec_first(&a));
+  TSCT_ASSERT(4 == int_vec_last(&a));
+  TSCT_ASSERT(5 == int_vec_size(&a));
+  TSCT_ASSERT(3 == int_vec_at(&a, 3));
+  TSCT_ASSERT(1 == int_vec_any(&a));
+  TSCT_ASSERT(0 == int_vec_all(&a));
+  TSCT_ASSERT(4 == int_vec_pop(&a));
+  TSCT_ASSERT(4 == int_vec_size(&a));
+  TSCT_ASSERT(8 == int_vec_max(&a));
+  
+  int_vec_push(&a, 10);
+  int_vec_pushfront(&a, -10);
+  
+  int_vec_destroy(&a);
+}
+
+void vec_foreach(void) {
+  size_t i;
+  int idx, v, sum, *vp;
+  int_vec_t a;
+  int_vec_init(&a);
+  int_vec_push(&a,  10);
+  int_vec_push(&a,  20);
+  int_vec_push(&a,  30);
+  int_vec_push(&a,  40);
+  int_vec_push(&a,  50);
+  int_vec_push(&a,  60);
+  int_vec_push(&a,  70);
+  int_vec_push(&a,  80);
+  int_vec_push(&a,  90);
+  int_vec_push(&a, 100);
+  
+  sum = 0; 
+  tsc_vec_foreach(a, v, i)
+    sum += v;
+  
+  TSCT_ASSERT(550 == sum);
+  
+  tsc_vec_foreach_ptr(a, vp, i)
+    *vp = i * *vp;
+  
+  sum = 0; 
+  tsc_vec_foreach(a, v, i)
+    sum += v;
+  
+  TSCT_ASSERT(3300 == sum);
+  
+  idx = 0;
+  sum = 0; 
+  tsc_vec_foreach_rev(a, v, i) {
+    if( idx % 2 == 0) {
+      sum += v;
+    } else {
+      sum -= v;
+    }
+    idx++;
+  }
+  TSCT_ASSERT(500 == sum);
+  
+  int_vec_destroy(&a);
+}
+
+
+void suite_vec(void) {
+  TSCT_REG(vec_basic);
+  TSCT_REG(vec_foreach);
+}
 
 int main(int argc, const char ** argv) {
   (void)argc;
   (void)argv;
   TSCT_ADD_SUITE(suite_base64);
   TSCT_ADD_SUITE(suite_matrix_alloc);
+  TSCT_ADD_SUITE(suite_vec);
   return TSCT_RUN_ALL();
 }
 
