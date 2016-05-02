@@ -21,4 +21,30 @@
   #define tsinline            
 #endif
 
+#define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+
+#define E_TSC(expr)  do         { \
+  if( (estr = (expr)) != NULL ) { \
+    return estr;                  \
+  } } while(0)
+
+#define E_MAIN(expr) do {               \
+    if( (estr = (expr)) != NULL ) {     \
+      printf("failed with %s\n", estr); \
+      return 1;                         \
+    }                                   \
+  } while(0)
+
+#define E_ERRNO_NEG1(expr) do { \
+  errno = 0;                    \
+  if( (expr) == -1 ) {          \
+    return strerror(errno);     \
+  } } while(0)
+
+#define E_ERRNO_NULL(expr) do { \
+  errno = 0;                    \
+  if( (expr) == NULL ) {        \
+    return strerror(errno);     \
+  } } while(0)
+
 #endif
