@@ -73,7 +73,7 @@ const char * ts_flatten(char **ret, char ** str_array, size_t n, const char * se
 }
 
 inline const char * ts_trunc(char **ret, const char *s, size_t n) {
-  return ts_ndup(ret, s, n);
+  return ts_strndup(ret, s, n);
 }
 
 const char * ts_trim(char **ret, const char *s) {
@@ -91,10 +91,10 @@ const char * ts_trim(char **ret, const char *s) {
   while (end > s && isspace(*end))
     end--;
   
-  return ts_ndup(ret, s, end - s + 1);
+  return ts_strndup(ret, s, end - s + 1);
 }
 
-const char * ts_dup(char **ret, const char *s) {
+const char * ts_strdup(char **ret, const char *s) {
   tsunlikely_if(s == NULL) { *ret = NULL; return NULL; }
   size_t len = strlen(s) + 1;
   tsunlikely_if( (*ret = (char *) malloc(len)) == NULL )
@@ -103,7 +103,7 @@ const char * ts_dup(char **ret, const char *s) {
   return NULL;
 }
 
-const char * ts_ndup(char **ret, const char *s, size_t n) {
+const char * ts_strndup(char **ret, const char *s, size_t n) {
   tsunlikely_if(s == NULL) { *ret = NULL; return NULL; }
   tsunlikely_if( (*ret = (char *) malloc(n+1)) == NULL )
     return "OOM";
@@ -114,7 +114,7 @@ const char * ts_ndup(char **ret, const char *s, size_t n) {
 
 inline const char * ts_upper(char **ret, char *s) {
   const char  *estr = NULL;
-  if( (estr = ts_dup(ret, s)) != NULL )
+  if( (estr = ts_strdup(ret, s)) != NULL )
     return estr;
   ts_upper_inplace(*ret);
   return NULL;
@@ -122,7 +122,7 @@ inline const char * ts_upper(char **ret, char *s) {
 
 inline const char * ts_lower(char **ret, char *s) {
   const char  *estr = NULL;
-  tsunlikely_if( (estr = ts_dup(ret, s)) != NULL )
+  tsunlikely_if( (estr = ts_strdup(ret, s)) != NULL )
     return estr;
   ts_lower_inplace(*ret);
   return NULL;
