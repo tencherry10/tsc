@@ -133,6 +133,9 @@
       sizeof((v).a[0]) * ((v).n - start - count));                                      \
     (v).n -= count;                                                                     \
   } while(0)
+#define ts_vec_foreach_idx(v,iter)                                                    \
+  tslikely_if( (v).n > 0 )                                                            \
+    for ( size_t iter = 0; (iter < (v).n) ; ++iter)
 #define ts_vec_foreach(v, var, iter)                                                   \
   tslikely_if( (v).n > 0 )                                                            \
     for ( (iter) = 0; ((iter) < (v).n) && (((var) = (v).a[(iter)]), 1); ++(iter))
@@ -234,7 +237,10 @@
     }                                                                                   \
     v->n++; v->a[idx] = x; return NULL; }                                               \
   static inline const char* name##_pushfront(name##_t *v, type x) {                     \
-    return name##_insert(v, 0, x); }                                                    \
+    return name##_insert(v, 0, x); }
+
+// must seperate this b/c some types don't accept !!
+#define ts_make_vec_extra(name, type)                                                   \
   static inline int name##_all(name##_t *v) {                                           \
     int ret = 1;                                                                        \
     for(size_t i = 0 ; i < v->n ; ++i)                                                  \
