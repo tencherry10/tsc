@@ -28,6 +28,13 @@
     return estr;                  \
   } } while(0)
 
+#define E_ABORT(expr)  do       {           \
+  if( (estr = (expr)) != NULL ) {           \
+    printf("abort with error: %s\n", estr); \
+    abort();                                \
+  } } while(0)
+  
+
 #define E_MAIN(expr) do {               \
     if( (estr = (expr)) != NULL ) {     \
       printf("failed with %s\n", estr); \

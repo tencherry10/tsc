@@ -6,7 +6,8 @@ process() {
 	lib=$3
 	dir=$4
 	includes=`cat $root/$dir/$lib | sed -n 's/#include "\(.*\)"/\1/p'`
-	for file in $includes; do
+	printf "\n\n// this is the amalgamated tsc lib (do not edit by hand)\n\n" >> $output
+  for file in $includes; do
 		echo "#line 1 \"$root/$dir/$file\"" >> $output
 		cat "$root/$dir/$file" >> $output
 	done

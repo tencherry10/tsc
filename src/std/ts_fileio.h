@@ -1,6 +1,8 @@
 #ifndef TS_FILEIO_H__
 #define TS_FILEIO_H__
 
+TSC_EXTERN const char * ts_strtol(long int* ret, const char * str, int base);
+
 TSC_EXTERN const char * ts_freadline(char **ret, FILE *stream);
 TSC_EXTERN const char * ts_freadlines(char ***ret, int *nlines, FILE *stream);
 TSC_EXTERN const char * ts_freadlinesfree(char **ret, int nlines);

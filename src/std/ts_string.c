@@ -1,5 +1,9 @@
 #include "libts.h"
 
+int   ts_startswith(const char *s, const char *start) {
+  return strncmp(start, s, strlen(start)) ? 0 : 1;
+}
+
 char* ts_trimleft_inplace(char *str) {
   int len = strlen(str);
   tsunlikely_if(len == 0) return str;

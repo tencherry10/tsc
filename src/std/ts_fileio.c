@@ -1,5 +1,18 @@
 #include "libts.h"
 
+
+const char * ts_strtol(long int* ret, const char * s, int base) {
+  const char *estr = NULL;
+  char *endptr;
+  
+  errno = 0;
+  *ret = strtol(s, &endptr, base);
+  if(errno) return strerror(errno);
+  if(endptr != (s + strlen(s)))
+    return "PARSE FAILED";
+  return estr;
+}
+
 // this function models after python's readline function
 // it will take care of all the corner cases of fgets
 // but it assumes there are no \0 in the file/stream
